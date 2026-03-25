@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>We Care — Medical Stock</title>
+  <link rel="stylesheet" href="../shared/style.css">
+</head>
+<body>
+<aside class="sidebar">
+  <a href="../admin/dashboard.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Dashboard</span></a>
+  <a href="../auth/login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7"/></svg><span>Logout</span></a>
+</aside>
+<div class="topbar">
+  <div class="logo"><span>💜 We Care</span></div>
+  <div class="user"><span id="topUsername">User</span></div>
+</div>
+<div class="main">
+  <div class="card">
+    <h2>Medical Stock Management</h2>
+    <div class="search-row">
+      <button class="btn btn-purple" onclick="generateReport()">Generate Report</button>
+      <input type="text" id="searchTerm" placeholder="Search medicine name…">
+      <button class="btn btn-purple" onclick="searchMedicine()">Search</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Medicine Name</label><input type="text" id="med_name" placeholder="Medicine Name"></div>
+      <div class="form-group"><label>Category</label><input type="text" id="category" placeholder="Category"></div>
+      <div class="form-group"><label>Quantity</label><input type="number" id="quantity" placeholder="Quantity" min="0"></div>
+      <div class="form-group"><label>Unit</label><input type="text" id="unit" placeholder="e.g. Tablets, ml"></div>
+      <div class="form-group"><label>Unit Price (Rs.)</label><input type="number" id="unit_price" placeholder="Price" step="0.01"></div>
+      <div class="form-group"><label>Expiry Date</label><input type="date" id="expiry_date"></div>
+      <div class="form-group"><label>Supplier</label><input type="text" id="supplier" placeholder="Supplier Name"></div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="status"><option>in_stock</option><option>low_stock</option><option>out_of_stock</option></select>
+      </div>
+    </div>
+    <input type="hidden" id="med_id">
+    <div class="btn-row">
+      <button class="btn btn-green" onclick="saveMedicine('add')">Add Stock</button>
+      <button class="btn btn-purple" onclick="saveMedicine('update')">Update</button>
+      <button class="btn btn-red" onclick="deleteMedicine()">Delete</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Current Stock</h2>
+    <div class="table-wrap">
+      <table id="stockTable">
+        <thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Qty</th><th>Unit</th><th>Price</th><th>Expiry</th><th>Supplier</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+const user = JSON.parse(localStorage.getItem('user')||'{}');
+document.getElementById('topUsername').textContent = user.first_name||'User';
+
+async function api(url, method='GET', body=null) {
+  const opts = {method, headers:{'Content-Type':'application/json'}};
+  if (body) opts.body = JSON.stringify(body);
+  return (await fetch(url, opts)).json();
+}
+
+async function loadStock() {
+  const data = await api('../../backend/stock/get_medicines.php');
+  const tbody = document.querySelector('#stockTable tbody');
+  tbody.innerHTML = '';
+  (data.medicines||[]).forEach(m => {
+    const badge = m.status==='in_stock'?'badge-green':m.status==='low_stock'?'badge-orange':'badge-red';
+    tbody.innerHTML += `<tr>
+      <td>${m.id}</td><td>${m.name}</td><td>${m.category}</td>
+      <td>${m.quantity}</td><td>${m.unit}</td><td>Rs.${m.unit_price}</td>
+      <td>${m.expiry_date}</td><td>${m.supplier}</td>
+      <td><span class="badge ${badge}">${m.status.replace('_',' ')}</span></td>
+      <td><button class="btn btn-purple" style="padding:5px 12px;font-size:12px" onclick="fillForm(${JSON.stringify(m).replace(/"/g,'&quot;')})">Edit</button></td>
+    </tr>`;
+  });
+}
+
+function fillForm(m) {
+  document.getElementById('med_id').value       = m.id;
+  document.getElementById('med_name').value     = m.name;
+  document.getElementById('category').value     = m.category;
+  document.getElementById('quantity').value     = m.quantity;
+  document.getElementById('unit').value         = m.unit;
+  document.getElementById('unit_price').value   = m.unit_price;
+  document.getElementById('expiry_date').value  = m.expiry_date;
+  document.getElementById('supplier').value     = m.supplier;
+  document.getElementById('status').value       = m.status;
+}
+
+async function saveMedicine(action) {
+  const body = { action, id: document.getElementById('med_id').value,
+    name: document.getElementById('med_name').value, category: document.getElementById('category').value,
+    quantity: document.getElementById('quantity').value, unit: document.getElementById('unit').value,
+    unit_price: document.getElementById('unit_price').value, expiry_date: document.getElementById('expiry_date').value,
+    supplier: document.getElementById('supplier').value, status: document.getElementById('status').value };
+  const data = await api('../../backend/stock/manage_stock.php','POST',body);
+  alert(data.message);
+  if (data.success) loadStock();
+}
+
+async function deleteMedicine() {
+  const id = document.getElementById('med_id').value;
+  if (!id||!confirm('Delete this medicine?')) return;
+  const data = await api('../../backend/stock/manage_stock.php','POST',{action:'delete',id});
+  alert(data.message); if (data.success) loadStock();
+}
+
+function generateReport() { window.open('../../backend/stock/report.php','_blank'); }
+function searchMedicine() {
+  const term = document.getElementById('searchTerm').value.toLowerCase();
+  document.querySelectorAll('#stockTable tbody tr').forEach(r => {
+    r.style.display = r.cells[1].textContent.toLowerCase().includes(term) ? '' : 'none';
+  });
+}
+loadStock();
+</script>
+</body>
+</html>

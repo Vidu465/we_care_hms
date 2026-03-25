@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>We Care — Invoice</title>
+  <link rel="stylesheet" href="../shared/style.css">
+  <style>
+    .total-display { background: var(--purple-light); border-radius: 12px; padding: 20px; text-align: center; margin: 16px 0; }
+    .total-display .label { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; }
+    .total-display .amount { font-size: 36px; font-weight: 700; color: var(--purple-dark); }
+  </style>
+</head>
+<body>
+<aside class="sidebar">
+  <a href="../admin/dashboard.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Dashboard</span></a>
+  <a href="../auth/login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7"/></svg><span>Logout</span></a>
+</aside>
+<div class="topbar">
+  <div class="logo"><span>💜 We Care</span></div>
+  <div class="user"><span id="topUsername">User</span></div>
+</div>
+<div class="main">
+  <div class="card">
+    <h2>Invoice Management</h2>
+    <div class="search-row">
+      <button class="btn btn-purple" onclick="generateReport()">Generate Report</button>
+      <input type="text" id="searchId" placeholder="Invoice ID">
+      <button class="btn btn-purple" onclick="searchInvoice()">Search</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Patient Name</label>
+        <select id="patient_id" onchange="recalc()"><option value="">Select Patient</option></select>
+      </div>
+      <div class="form-group">
+        <label>Doctor Name</label>
+        <select id="doctor_id" onchange="recalc()"><option value="">Select Doctor</option></select>
+      </div>
+      <div class="form-group">
+        <label>Lab Test</label>
+        <select id="lab_test_id" onchange="recalc()"><option value="0">None</option></select>
+      </div>
+      <div class="form-group">
+        <label>Treatment</label>
+        <select id="treatment_id" onchange="recalc()"><option value="0">None</option></select>
+      </div>
+      <div class="form-group">
+        <label>Ward Number</label>
+        <input type="text" id="ward_number" placeholder="Ward Number" oninput="recalc()">
+      </div>
+      <div class="form-group">
+        <label>Consultation Fee (Rs.)</label>
+        <input type="number" id="consult_fee" value="1000" step="0.01" oninput="recalc()">
+      </div>
+      <div class="form-group">
+        <label>Ward Fee (Rs.)</label>
+        <input type="number" id="ward_fee" value="0" step="0.01" oninput="recalc()">
+      </div>
+    </div>
+    <div class="total-display">
+      <div class="label">Total Amount</div>
+      <div class="amount" id="totalDisplay">Rs. 0.00</div>
+    </div>
+    <input type="hidden" id="invoice_id">
+    <div class="btn-row">
+      <button class="btn btn-green" onclick="saveInvoice()">Generate Bill</button>
+      <button class="btn btn-purple" onclick="printReceipt()">Print Receipt</button>
+      <button class="btn btn-red" onclick="deleteInvoice()">Delete</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Invoices</h2>
+    <div class="table-wrap">
+      <table id="invoiceTable">
+        <thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Lab Test</th><th>Treatment</th><th>Total</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const user = JSON.parse(localStorage.getItem('user')||'{}');
+document.getElementById('topUsername').textContent = user.first_name||'User';
+let labPrices = {}, treatPrices = {};
+
+async function api(url,method='GET',body=null) {
+  const opts={method,headers:{'Content-Type':'application/json'}};
+  if(body) opts.body=JSON.stringify(body);
+  return (await fetch(url,opts)).json();
+}
+
+async function loadDropdowns() {
+  const [patients, doctors, labs, treats] = await Promise.all([
+    api('../../backend/auth/get_users.php?role=patient'),
+    api('../../backend/auth/get_users.php?role=doctor'),
+    api('../../backend/payment/get_lab_tests.php'),
+    api('../../backend/payment/get_treatments.php')
+  ]);
+  const pSel = document.getElementById('patient_id');
+  (patients.users||[]).forEach(p => pSel.innerHTML+=`<option value="${p.id}">${p.first_name} ${p.last_name}</option>`);
+  const dSel = document.getElementById('doctor_id');
+  (doctors.users||[]).forEach(d => dSel.innerHTML+=`<option value="${d.id}">${d.first_name} ${d.last_name}</option>`);
+  const lSel = document.getElementById('lab_test_id');
+  (labs.tests||[]).forEach(l => { labPrices[l.id]=parseFloat(l.price); lSel.innerHTML+=`<option value="${l.id}">${l.test_name} (Rs.${l.price})</option>`; });
+  const tSel = document.getElementById('treatment_id');
+  (treats.treatments||[]).forEach(t => { treatPrices[t.id]=parseFloat(t.price); tSel.innerHTML+=`<option value="${t.id}">${t.name} (Rs.${t.price})</option>`; });
+  recalc();
+}
+
+function recalc() {
+  const labId   = document.getElementById('lab_test_id').value;
+  const treatId = document.getElementById('treatment_id').value;
+  const consult = parseFloat(document.getElementById('consult_fee').value)||0;
+  const ward    = parseFloat(document.getElementById('ward_fee').value)||0;
+  const lab     = labPrices[labId]||0;
+  const treat   = treatPrices[treatId]||0;
+  const total   = consult + ward + lab + treat;
+  document.getElementById('totalDisplay').textContent = 'Rs. ' + total.toFixed(2);
+}
+
+async function saveInvoice() {
+  const labId   = document.getElementById('lab_test_id').value;
+  const treatId = document.getElementById('treatment_id').value;
+  const consult = parseFloat(document.getElementById('consult_fee').value)||0;
+  const ward    = parseFloat(document.getElementById('ward_fee').value)||0;
+  const total   = consult + ward + (labPrices[labId]||0) + (treatPrices[treatId]||0);
+  const body = {
+    patient_id: document.getElementById('patient_id').value,
+    doctor_id:  document.getElementById('doctor_id').value,
+    lab_test_id: labId||null, treatment_id: treatId||null,
+    ward_number: document.getElementById('ward_number').value,
+    consultation_fee: consult, ward_fee: ward,
+    lab_fee: labPrices[labId]||0, treatment_fee: treatPrices[treatId]||0,
+    total_amount: total
+  };
+  const data = await api('../../backend/payment/manage_invoice.php','POST',{action:'create',...body});
+  alert(data.message); if(data.success) loadInvoices();
+}
+
+async function loadInvoices() {
+  const data = await api('../../backend/payment/get_invoices.php');
+  const tbody = document.querySelector('#invoiceTable tbody');
+  tbody.innerHTML = '';
+  (data.invoices||[]).forEach(inv => {
+    const badge = inv.status==='paid'?'badge-green':inv.status==='cancelled'?'badge-red':'badge-orange';
+    tbody.innerHTML+=`<tr>
+      <td>${inv.id}</td><td>${inv.patient_name}</td><td>${inv.doctor_name}</td>
+      <td>${inv.lab_test||'-'}</td><td>${inv.treatment||'-'}</td>
+      <td>Rs. ${parseFloat(inv.total_amount).toFixed(2)}</td>
+      <td><span class="badge ${badge}">${inv.status}</span></td>
+      <td>
+        <button class="btn btn-purple" style="padding:5px 10px;font-size:12px" onclick="printById(${inv.id})">Print</button>
+        <button class="btn btn-green"  style="padding:5px 10px;font-size:12px" onclick="markPaid(${inv.id})">Paid</button>
+      </td>
+    </tr>`;
+  });
+}
+
+async function markPaid(id) {
+  const data = await api('../../backend/payment/manage_invoice.php','POST',{action:'update_status',id,status:'paid'});
+  alert(data.message); if(data.success) loadInvoices();
+}
+
+function printById(id) { window.open(`../../backend/payment/receipt.php?id=${id}`,'_blank'); }
+function printReceipt() {
+  const id = document.getElementById('invoice_id').value;
+  if (!id) { alert('Generate bill first.'); return; }
+  printById(id);
+}
+function generateReport() { window.open('../../backend/payment/report.php','_blank'); }
+function searchInvoice() {}
+async function deleteInvoice() {
+  const id = document.getElementById('invoice_id').value;
+  if(!id||!confirm('Delete this invoice?')) return;
+  const data = await api('../../backend/payment/manage_invoice.php','POST',{action:'delete',id});
+  alert(data.message); if(data.success) loadInvoices();
+}
+loadDropdowns(); loadInvoices();
+</script>
+</body>
+</html>

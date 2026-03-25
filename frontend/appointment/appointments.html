@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>We Care — Appointments</title>
+  <link rel="stylesheet" href="../shared/style.css">
+</head>
+<body>
+<!-- Sidebar -->
+<aside class="sidebar">
+  <a href="../admin/dashboard.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Dashboard</span></a>
+  <a href="../auth/login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7"/></svg><span>Logout</span></a>
+</aside>
+
+<div class="topbar">
+  <div class="logo"><span>💜 We Care</span></div>
+  <div class="user"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span id="topUsername">User</span></div>
+</div>
+
+<div class="main">
+  <div class="card">
+    <h2>Appointment Management</h2>
+    <div class="search-row">
+      <button class="btn btn-purple" onclick="generateReport()">Generate Report</button>
+      <input type="text" id="searchId" placeholder="Search by ID">
+      <button class="btn btn-purple" onclick="searchAppointment()">Search</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group"><label>First Name</label><input type="text" id="first_name" placeholder="First Name"></div>
+      <div class="form-group"><label>Last Name</label><input type="text" id="last_name" placeholder="Last Name"></div>
+      <div class="form-group"><label>Email</label><input type="email" id="email" placeholder="Email"></div>
+      <div class="form-group"><label>Mobile Number</label><input type="text" id="mobile" placeholder="Mobile Number"></div>
+      <div class="form-group"><label>NIC</label><input type="text" id="nic" placeholder="NIC"></div>
+      <div class="form-group"><label>Date of Birth</label><input type="date" id="dob"></div>
+      <div class="form-group">
+        <label>Gender</label>
+        <select id="gender"><option value="">Gender</option><option>Male</option><option>Female</option><option>Other</option></select>
+      </div>
+      <div class="form-group"><label>Appointment Date</label><input type="date" id="app_date"></div>
+      <div class="form-group"><label>Appointment Time</label><input type="time" id="app_time"></div>
+      <div class="form-group">
+        <label>Department</label>
+        <select id="dept_id"><option value="">Select Department</option></select>
+      </div>
+      <div class="form-group">
+        <label>Doctor</label>
+        <select id="doctor_id"><option value="">Select Doctor</option></select>
+      </div>
+      <div class="form-group form-full"><label>Address / Notes</label><textarea id="notes" placeholder="Notes or address"></textarea></div>
+    </div>
+    <input type="hidden" id="appointment_id">
+    <div class="btn-row">
+      <button class="btn btn-green" onclick="saveAppointment('register')">Register</button>
+      <button class="btn btn-purple" onclick="saveAppointment('update')">Update</button>
+      <button class="btn btn-red" onclick="deleteAppointment()">Delete</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Appointments</h2>
+    <div class="table-wrap">
+      <table id="appointmentTable">
+        <thead><tr><th>ID</th><th>Patient</th><th>Doctor</th><th>Dept</th><th>Date</th><th>Time</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const user = JSON.parse(localStorage.getItem('user') || '{}');
+document.getElementById('topUsername').textContent = user.first_name || 'User';
+
+async function api(url, method='GET', body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+async function loadDepts() {
+  const data = await api('../../backend/appointment/get_departments.php');
+  const sel = document.getElementById('dept_id');
+  (data.departments || []).forEach(d => {
+    sel.innerHTML += `<option value="${d.id}">${d.name}</option>`;
+  });
+}
+
+async function loadDoctors(deptId='') {
+  const data = await api(`../../backend/appointment/get_doctors.php?dept_id=${deptId}`);
+  const sel = document.getElementById('doctor_id');
+  sel.innerHTML = '<option value="">Select Doctor</option>';
+  (data.doctors || []).forEach(d => {
+    sel.innerHTML += `<option value="${d.id}">${d.first_name} ${d.last_name}</option>`;
+  });
+}
+
+document.getElementById('dept_id').onchange = e => loadDoctors(e.target.value);
+
+async function loadAppointments() {
+  const data = await api('../../backend/appointment/get_appointments.php');
+  const tbody = document.querySelector('#appointmentTable tbody');
+  tbody.innerHTML = '';
+  (data.appointments || []).forEach(a => {
+    tbody.innerHTML += `<tr>
+      <td>${a.id}</td>
+      <td>${a.patient_name}</td>
+      <td>${a.doctor_name}</td>
+      <td>${a.department}</td>
+      <td>${a.appointment_date}</td>
+      <td>${a.appointment_time}</td>
+      <td><span class="badge badge-${a.status==='confirmed'?'green':a.status==='cancelled'?'red':'orange'}">${a.status}</span></td>
+      <td><button class="btn btn-purple" style="padding:5px 12px;font-size:12px" onclick="loadForm(${JSON.stringify(a).replace(/"/g,'&quot;')})">Edit</button></td>
+    </tr>`;
+  });
+}
+
+function loadForm(a) {
+  document.getElementById('appointment_id').value = a.id;
+  document.getElementById('first_name').value = a.patient_first_name || '';
+  document.getElementById('last_name').value  = a.patient_last_name  || '';
+  document.getElementById('email').value      = a.patient_email      || '';
+  document.getElementById('mobile').value     = a.patient_mobile     || '';
+  document.getElementById('nic').value        = a.patient_nic        || '';
+  document.getElementById('app_date').value   = a.appointment_date   || '';
+  document.getElementById('app_time').value   = a.appointment_time   || '';
+  document.getElementById('notes').value      = a.notes              || '';
+}
+
+async function saveAppointment(action) {
+  const body = {
+    action,
+    id:          document.getElementById('appointment_id').value,
+    patient_id:  user.id,
+    first_name:  document.getElementById('first_name').value,
+    last_name:   document.getElementById('last_name').value,
+    email:       document.getElementById('email').value,
+    mobile:      document.getElementById('mobile').value,
+    nic:         document.getElementById('nic').value,
+    dob:         document.getElementById('dob').value,
+    gender:      document.getElementById('gender').value,
+    dept_id:     document.getElementById('dept_id').value,
+    doctor_id:   document.getElementById('doctor_id').value,
+    app_date:    document.getElementById('app_date').value,
+    app_time:    document.getElementById('app_time').value,
+    notes:       document.getElementById('notes').value,
+  };
+  const data = await api('../../backend/appointment/manage_appointment.php', 'POST', body);
+  alert(data.message || (data.success ? 'Done!' : 'Error'));
+  if (data.success) loadAppointments();
+}
+
+async function deleteAppointment() {
+  const id = document.getElementById('appointment_id').value;
+  if (!id) { alert('Select an appointment first.'); return; }
+  if (!confirm('Delete this appointment?')) return;
+  const data = await api('../../backend/appointment/manage_appointment.php', 'POST', {action:'delete', id});
+  alert(data.message);
+  if (data.success) loadAppointments();
+}
+
+async function searchAppointment() {
+  const id = document.getElementById('searchId').value;
+  const data = await api(`../../backend/appointment/get_appointments.php?id=${id}`);
+  // populate form if found
+}
+
+function generateReport() {
+  window.open('../../backend/appointment/report.php', '_blank');
+}
+
+loadDepts(); loadAppointments();
+</script>
+</body>
+</html>

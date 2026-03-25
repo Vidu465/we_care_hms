@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>We Care — Dashboard</title>
+  <link rel="stylesheet" href="../shared/style.css">
+</head>
+<body>
+<aside class="sidebar">
+  <a href="dashboard.html" class="active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Dashboard</span></a>
+  <a href="../admin/staff.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg><span>Staff</span></a>
+  <a href="../stock/stock.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg><span>Stock</span></a>
+  <a href="../appointment/appointments.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Appointment</span></a>
+  <a href="../payment/invoice.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Payment</span></a>
+  <a href="../auth/login.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7"/></svg><span>Logout</span></a>
+</aside>
+<div class="topbar">
+  <div class="logo"><span>💜 We Care</span></div>
+  <div class="user"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg><span id="topUsername">Admin</span></div>
+</div>
+<div class="main">
+  <div class="stats-row">
+    <div class="stat-card"><div class="num" id="totalPatients">0</div><div class="lbl">Total Patients</div></div>
+    <div class="stat-card"><div class="num" id="totalDoctors">0</div><div class="lbl">Total Doctors</div></div>
+    <div class="stat-card"><div class="num" id="totalAppointments">0</div><div class="lbl">Appointments Today</div></div>
+    <div class="stat-card"><div class="num" id="totalRevenue">Rs.0</div><div class="lbl">Total Revenue</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="card">
+      <h2>Recent Appointments</h2>
+      <div class="table-wrap"><table id="recentAppointments">
+        <thead><tr><th>Patient</th><th>Doctor</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Recent Invoices</h2>
+      <div class="table-wrap"><table id="recentInvoices">
+        <thead><tr><th>Patient</th><th>Amount</th><th>Status</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+<script>
+const user = JSON.parse(localStorage.getItem('user')||'{}');
+if (!user.id) window.location.href = '../auth/login.html';
+document.getElementById('topUsername').textContent = user.first_name||'Admin';
+
+async function loadStats() {
+  try {
+    const data = await (await fetch('../../backend/admin/dashboard_stats.php')).json();
+    document.getElementById('totalPatients').textContent    = data.patients||0;
+    document.getElementById('totalDoctors').textContent     = data.doctors||0;
+    document.getElementById('totalAppointments').textContent= data.appointments_today||0;
+    document.getElementById('totalRevenue').textContent     = 'Rs.'+Number(data.revenue||0).toLocaleString();
+    const tbody1 = document.querySelector('#recentAppointments tbody');
+    (data.recent_appointments||[]).forEach(a => {
+      tbody1.innerHTML+=`<tr><td>${a.patient_name}</td><td>${a.doctor_name}</td><td>${a.appointment_date}</td><td><span class="badge badge-${a.status==='confirmed'?'green':a.status==='cancelled'?'red':'orange'}">${a.status}</span></td></tr>`;
+    });
+    const tbody2 = document.querySelector('#recentInvoices tbody');
+    (data.recent_invoices||[]).forEach(inv => {
+      tbody2.innerHTML+=`<tr><td>${inv.patient_name}</td><td>Rs.${Number(inv.total_amount).toLocaleString()}</td><td><span class="badge badge-${inv.status==='paid'?'green':'orange'}">${inv.status}</span></td></tr>`;
+    });
+  } catch(e) { console.error(e); }
+}
+loadStats();
+</script>
+</body>
+</html>
